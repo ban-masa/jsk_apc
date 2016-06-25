@@ -1010,8 +1010,40 @@
     (send self :stop-grasp arm)
     (ros::ros-info "[:calib-pressure-threshold] Threshold r:~a l:~a"
                    (gethash :r-pressure-threshold _hard-coded-variables)
-                   (gethash :l-pressure-threshold _hard-coded-variables)))
+                   (gethash :l-pressure-threshold _hard-coded-variables))
+    (while (not (send self :check-pressure-threshold)))
+    )
 
+  (:check-pressure-threshold
+    ()
+    (let ((r-value (gethash :r-pressure-threshold _hard-coded-variables))
+          (l-value (gethash :l-pressure-threshold _hard-coded-variables)))
+      (cond
+        ((or (< r-value 800) (> r-value 880))
+         (ros::ros-warn "[:check-pressure-threshold] right threshold is invalid")
+         (setf (gethash :r-pressure-threshold _hard-coded-variables) 1000)
+         (send self :adjust-pressure-threshold arm)
+         nil)
+        ((or (< l-value 800) (> l-value 880))
+         (ros::ros-warn "[:check-pressure-threshold] left threshold is invalid")
+         (setf (gethash :r-pressure-threshold _hard-coded-variables) 1000)
+         (send self :adjust-pressure-threshold arm)
+         nil)
+        (t
+          t))
+      ))
+
+  (:adjust-pressure-threshold
+    (arm)
+    (send self :start-grasp arm)
+    (do-until-key
+      (ros::ros-info "~a pressure: ~a" (arm-to-str arm)
+                     (send (one-shot-subscribe (format nil "/gripper_front/limb/~a/pressure/state" (arm-to-str arm))
+                                               std_msgs::Float64) :data))
+      (unix::usleep (* 250 1000)))
+    (send self :update-pressure-threshold arm)
+    (send self :stop-grasp arm)
+    )
   )
 
 (defun jsk_2016_01_baxter_apc::baxter-init (&key (ctype :default-controller))
